@@ -1,0 +1,23 @@
+[package]
+name = "obmerge"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+tungstenite = { version = "0.17.3", features = ["native-tls"] }
+url="2.3.1"
+serde_json="1.0"
+serde={ version = "1.0", features = ["derive"] }
+crossbeam-channel="0.5.6"
+triple_buffer="6.2.0"
+tokio={ version = "1.21.2", features = [ "rt-multi-thread", "macros" ] }
+tonic="0.8.2"
+prost = "0.11.2"
+futures = { version = "0.3", default-features = false, features = ["alloc"] }
+tokio-stream = { version = "0.1", features = ["net"] }
+h2 = "0.3"
+
+[build-dependencies]
+tonic-build="0.8.2"
