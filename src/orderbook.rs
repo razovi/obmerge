@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-use crate::server::order_book::{Summary, Level};
+use crate::proto::order_book::{Summary, Level};
 #[derive(Clone, Serialize)]
 pub struct OrderBook{
     pub spread: f64, 
@@ -9,19 +9,34 @@ pub struct OrderBook{
 }
 
 impl OrderBook{
-    pub fn toSummary(self) -> Summary{
+    pub fn to_summary(self) -> Summary{
         let mut a = Vec::new();
         let mut b = Vec::new();
         for line in self.asks {
-            a.push(line.toLevel());
+            a.push(line.to_level());
         } 
         for line in self.bids {
-            a.push(line.toLevel());
+            b.push(line.to_level());
         } 
         Summary { 
             spread: self.spread, 
             bids: b, 
-            asks: a 
+            asks: a,
+        }
+    }
+    pub fn from_summary(x: Summary) -> Self{
+        let mut a = Vec::new();
+        let mut b = Vec::new();
+        for line in x.asks {
+            a.push(OrderLine::from_level(line));
+        } 
+        for line in x.bids {
+            b.push(OrderLine::from_level(line));
+        } 
+        OrderBook { 
+            spread: x.spread, 
+            bids: b, 
+            asks: a,
         }
     }
 }
@@ -66,11 +81,19 @@ impl OrderLine{
         return false;
     }
 
-    pub fn toLevel(self) -> Level{
+    pub fn to_level(self) -> Level{
         Level{
             exchange: self.exchange,
             price: self.price,
             amount: self.amount,
+        }
+    }
+
+    pub fn from_level(x: Level) -> Self{
+        OrderLine{
+            exchange: x.exchange,
+            price: x.price,
+            amount: x.amount,
         }
     }
 }

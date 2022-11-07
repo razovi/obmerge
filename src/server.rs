@@ -1,58 +1,43 @@
-use crate::orderbook::OrderBook;
-
-pub mod order_book {
-    tonic::include_proto!("orderbook");
-}
-
 use futures::Stream;
-use futures::stream;
-use std::sync::{Arc, Mutex};
-use std::{net::ToSocketAddrs, pin::Pin};
-use crossbeam_channel::Receiver;
-use tokio_stream::{wrappers::ReceiverStream};
-use tonic::{transport::Server, Request, Response, Status, Streaming};
-use order_book::orderbook_aggregator_server::{OrderbookAggregator, OrderbookAggregatorServer};
+use std::{pin::Pin};
+use tokio::sync::{broadcast, mpsc};
+use tonic::{transport::Server, Response, Status};
+use crate::proto::order_book::orderbook_aggregator_server::{OrderbookAggregator, OrderbookAggregatorServer};
+use crate::proto::order_book::{Summary, Empty};
+use std::net::ToSocketAddrs;
 
-use order_book::{Empty, Summary, Level};
 
-type EchoResult<T> = Result<Response<T>, Status>;
-type ResponseStream = Pin<Box<dyn Stream<Item = Result<Summary, Status>> + Send>>;
-
-/*#[derive(Debug)]
-pub struct EchoServer {
-    messages: Arc<Mutex<Vec<Summary>>>
+#[derive(Debug)]
+pub struct BookServer {
+    tx: broadcast::Sender<Summary>
 }
 
 #[tonic::async_trait]
-impl OrderbookAggregator for EchoServer {
-    type BookSummaryStream = ResponseStream;
-    async fn book_summary(&self, _: tonic::Request<order_book::Empty>) -> Result<tonic::Response<Self::BookSummaryStream>, tonic::Status> {
-        let mut x = self.messages.lock().unwrap();
-        let mut cv = Vec::new();
-        for book in *x {
-            cv.push(book);
-        }
-        x.clear();
-        let stream = stream::iter(cv);
-        /*Ok(Response::new(
-            Box::pin())
-        )*/
+impl OrderbookAggregator for BookServer {
+    type BookSummaryStream = Pin<Box<dyn Stream<Item = Result<Summary, Status>> + Send>>;
+    async fn book_summary(&self, _: tonic::Request<Empty>) -> Result<Response<Self::BookSummaryStream>, Status> {
+        let mut rx = self.tx.subscribe();
+        
+        let (ctx, crx) = mpsc::channel::<Result<Summary, Status>>(1);
+        tokio::spawn(async move {
+            loop{
+                ctx.send(Ok(rx.recv().await.unwrap())).await;
+            }
+        });
 
+        Ok(Response::new(Box::pin(
+            tokio_stream::wrappers::ReceiverStream::new(crx),
+        )))
+        
     }
 }
-*/
 
-#[tokio::main]
-async fn start(rx: Receiver<OrderBook>){
-    /*let mut data = Arc::new(Mutex::new(Vec::new()));
-    let mut server = EchoServer {messages: Arc::clone(data)};
+pub async fn start(tx: broadcast::Sender<Summary>) -> Result<(), Box<dyn std::error::Error>>{
+
+    let server = BookServer{tx};
     Server::builder()
         .add_service(OrderbookAggregatorServer::new(server))
         .serve("[::1]:50051".to_socket_addrs().unwrap().next().unwrap())
-        .await
-        .unwrap();
-    loop{
-        let x = rx.recv();
-        data.lock().unwrap().push(x.unwrap().toSummary());
-    }*/
+        .await?;
+    Ok(())
 }

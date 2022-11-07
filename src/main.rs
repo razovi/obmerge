@@ -5,11 +5,12 @@ use std::sync::{Arc, Mutex};
 use triple_buffer::triple_buffer;
 use obmerge::orderbook::{OrderLine, OrderBook};
 use obmerge::exchanges::{obbinance::OBBinance, obbitstamp::OBBitstamp};
+use obmerge::proto::order_book::Summary;
+use obmerge::server;
 use std::mem::take;
 use crossbeam_channel::{unbounded, TryRecvError, Receiver, Sender};
 use tonic::{transport::Server, Request, Response, Status, Streaming};
-use obmerge::server;
-use tokio::sync::mpsc;
+use tokio::sync::broadcast;
 
 fn clear(exchid: &mut Vec<usize>, tx: &Sender<usize>, handles: &mut Vec<thread::JoinHandle<()>>, books: &mut Vec<triple_buffer::Output<OrderBook>>) {
     for id in exchid.iter() {
@@ -31,9 +32,13 @@ fn book_zero() -> OrderBook{
     }
 }
 
-fn main() {
-    //let (stx, srx) = mpsc::channel(128);
-    //server::start(srx);
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>>{
+    let (obtx, _) = broadcast::channel::<Summary>(9);
+    let cobtx = obtx.clone();
+    tokio::spawn(async move {
+        server::start(cobtx).await.unwrap();
+    });
 
     let mut buffer: String = String::new();
     let status: Vec<String> = vec![String::from("offline"), String::from("online")];
@@ -172,10 +177,12 @@ fn main() {
 
                 res.spread = res.asks[0].price - res.bids[0].price;
                 println!("{}", serde_json::to_string(&res).unwrap());
+                obtx.send(res.to_summary()).unwrap();
             }
             _ => {
                 println!("Unknown Command");
             },
         }
     }
+    Ok(())
 }
