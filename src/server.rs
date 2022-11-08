@@ -9,7 +9,7 @@ use std::net::ToSocketAddrs;
 
 #[derive(Debug)]
 pub struct BookServer {
-    tx: broadcast::Sender<Summary>
+    tx: broadcast::Sender<Option<Summary>>
 }
 
 #[tonic::async_trait]
@@ -24,8 +24,13 @@ impl OrderbookAggregator for BookServer {
                 let data = rx.recv().await;
                 match data {
                     Ok(x) => {
-                        match ctx.send(Ok(x)).await {
-                            _ => {}
+                        if let Some(y) = x {
+                            match ctx.send(Ok(y)).await {
+                                _ => {}
+                            }
+                        }
+                        else{
+                            break;
                         }
                     }
                     Err(error) => {
@@ -50,7 +55,7 @@ impl OrderbookAggregator for BookServer {
     }
 }
 
-pub async fn start(tx: broadcast::Sender<Summary>) -> Result<(), Box<dyn std::error::Error>>{
+pub async fn start(tx: broadcast::Sender<Option<Summary>>) -> Result<(), Box<dyn std::error::Error>>{
 
     let server = BookServer{tx};
     Server::builder()

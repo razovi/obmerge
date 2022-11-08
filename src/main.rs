@@ -14,17 +14,18 @@ use tokio::sync::mpsc::{self, Receiver, Sender};
 use tokio::sync::broadcast;
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
+use std::process;
 
 //allowed symbols
 const ALLSYM: [&'static str; 3] = ["ethbtc", "ethusdt", "btcusdt"];
 
 
 async fn clear(handles: &mut Vec<JoinHandle<()>>, books: &mut Arc<RwLock<Vec<triple_buffer::Output<OrderBook>>>>) {
+    books.write().await.clear();
     for handle in take(handles) {
         handle.abort();
     }
     handles.clear();
-    books.write().await.clear();
 }
 
 fn book_zero() -> OrderBook{
@@ -36,13 +37,13 @@ fn book_zero() -> OrderBook{
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>>{
-    let (obtx, _obrx) = broadcast::channel::<Summary>(10);
-    let cobtx = obtx.clone();
-    let mut tasks = Vec::new();
-    tasks.push(tokio::spawn(async move {
-        server::start(cobtx).await.unwrap();
-    }));
+async fn main() {
+    let (obtx, _obrx) = broadcast::channel::<Option<Summary>>(10);
+    let cobtx1 = obtx.clone();
+    let cobtx2 = obtx.clone();
+    tokio::spawn(async move {
+        let _ = server::start(cobtx1).await;
+    });
 
     let mut buffer: String = String::new();
     let status: Vec<String> = vec![String::from("offline"), String::from("online")];
@@ -53,12 +54,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>>{
 
     let mut handles: Vec<JoinHandle<()>> = Vec::new();
     let (tx, mut rx) = mpsc::channel::<usize>(1);
-    tasks.push(tokio::spawn(async move {
+    tokio::spawn(async move {
         loop{
             if let Some(id) = rx.recv().await {
                 if id == 0 {
                     let mut books = books_clone.write().await;
                     let n = books.len();
+                    if n == 0{
+                        continue;
+                    }
                     let mut ob: Vec<OrderBook> = Vec::new();
                     let mut tot: usize = 0;
                     let mut res = book_zero();
@@ -105,11 +109,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>>{
                     }
 
                     res.spread = res.asks[0].price - res.bids[0].price;
-                    obtx.send(res.to_summary()).unwrap();
+                    cobtx2.send(Some(res.to_summary())).unwrap();
                 }
             }
         }
-    }));
+    });
     let mut hashsym = HashSet::new();
     for x in ALLSYM {
         hashsym.insert(x);
@@ -126,8 +130,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>>{
         }
         match word.unwrap(){
             "quit" => {
-                clear(&mut handles, &mut books).await;
-                break;
+                process::exit(0);
             },
             "start" => {
                 //get trading symbol
@@ -201,8 +204,5 @@ async fn main() -> Result<(), Box<dyn std::error::Error>>{
             },
         }
     };
-    for task in tasks {
-        task.abort();
-    }
-    Ok(())
+    
 }

@@ -88,7 +88,7 @@ impl OBBinance {
                     }
                     o.spread = o.asks[0].price - o.bids[0].price;
                     self.book.write(o);
-                    tx.send(0).await.unwrap();
+                    let _ = tx.send(0).await;
                 }
                 _ => {
                     panic!("Unexpected Binance Message");
