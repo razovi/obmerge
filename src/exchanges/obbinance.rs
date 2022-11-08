@@ -1,6 +1,6 @@
 use std::net::TcpStream;
 use crate::orderbook::{OrderLine, OrderBook};
-use tungstenite::{connect, WebSocket, stream::MaybeTlsStream};
+use tungstenite::{connect, WebSocket, stream::MaybeTlsStream, protocol::Message};
 use url::Url;
 use tokio::sync::mpsc::Sender;
 use serde_json;
@@ -49,9 +49,13 @@ impl OBBinance {
     }
     pub async fn listen(&mut self, tx: Sender<usize>) {
         let mut fallback = BinanceBook{lastUpdateId: 0, bids: Vec::new(), asks: Vec::new()};
+        let mut frame = Vec::new();
         loop{
             let msg = self.socket.as_mut().unwrap().read_message().expect("Error reading message");
-            //println!("Received: {}", msg);
+            if !frame.is_empty() {
+                self.socket.as_mut().unwrap().write_message(Message::Pong(frame.clone())).unwrap();
+                frame.clear();
+            }
 
             let mut o: OrderBook = OrderBook{
                 spread: 0.0,
@@ -59,27 +63,37 @@ impl OBBinance {
                 bids: Vec::new(),
             };
 
-            let b: BinanceBook = serde_json::from_str(&msg.into_text().unwrap()[..]).unwrap_or(fallback);
-            fallback = b.clone();
-            for i in 0..10 {
-                let l = OrderLine{
-                    exchange: String::from("binance"),
-                    price: b.asks[i][0].parse::<f64>().unwrap(), 
-                    amount: b.asks[i][1].parse::<f64>().unwrap()
-                };
-                o.asks.push(l);
+            match msg {
+                Message::Ping(x) => {
+                    frame = x;
+                }
+                Message::Text(x) => {
+                    let b: BinanceBook = serde_json::from_str(&x[..]).unwrap_or(fallback);
+                    fallback = b.clone();
+                    for i in 0..10 {
+                        let l = OrderLine{
+                            exchange: String::from("binance"),
+                            price: b.asks[i][0].parse::<f64>().unwrap(), 
+                            amount: b.asks[i][1].parse::<f64>().unwrap()
+                        };
+                        o.asks.push(l);
+                    }
+                    for i in 0..10 {
+                        let l = OrderLine{
+                            exchange: String::from("binance"),
+                            price: b.bids[i][0].parse::<f64>().unwrap(), 
+                            amount: b.bids[i][1].parse::<f64>().unwrap()
+                        };
+                        o.bids.push(l);
+                    }
+                    o.spread = o.asks[0].price - o.bids[0].price;
+                    self.book.write(o);
+                    tx.send(0).await.unwrap();
+                }
+                _ => {
+                    panic!("Unexpected Binance Message");
+                }
             }
-            for i in 0..10 {
-                let l = OrderLine{
-                    exchange: String::from("binance"),
-                    price: b.bids[i][0].parse::<f64>().unwrap(), 
-                    amount: b.bids[i][1].parse::<f64>().unwrap()
-                };
-                o.bids.push(l);
-            }
-            o.spread = o.asks[0].price - o.bids[0].price;
-            self.book.write(o);
-            tx.send(0).await.unwrap();
         }
     }
 }
