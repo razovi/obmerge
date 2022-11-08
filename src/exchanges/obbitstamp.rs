@@ -2,7 +2,7 @@ use std::net::TcpStream;
 use crate::orderbook::{OrderLine, OrderBook};
 use tungstenite::{connect, WebSocket, stream::MaybeTlsStream};
 use url::Url;
-use crossbeam_channel::{TryRecvError, Receiver};
+use tokio::sync::broadcast::Sender;
 use serde::{Serialize, Deserialize};
 use tungstenite::Message;
 use serde_json;
@@ -75,24 +75,12 @@ impl OBBitstamp {
             socket,
         }
     }
-    pub fn listen(&mut self, rx: Receiver<usize>, id: usize) {
+    pub fn listen(&mut self, tx: Sender<usize>) {
         let mut fallback: BitstampBook = BitstampBook{data: BitstampData{timestamp: String::new(), microtimestamp: String::new(), bids: Vec::new(), asks: Vec::new()}, channel: String::new(), event: String::new()};
         loop{
-            match rx.try_recv() {
-                Ok(x) => {
-                    if x == id {
-                        println!("Terminated Bitstamp stream.");
-                        break;
-                    }
-                }
-                Err(TryRecvError::Empty) => {}
-                _ => {
-                    println!("Terminated Bitstamp stream.");
-                    break;
-                } 
-            }
 
             let msg = self.socket.as_mut().unwrap().read_message().expect("Error reading message");
+            //println!("Received: {}", msg);
             let mut o: OrderBook = OrderBook{
                 spread: 0.0,
                 asks: Vec::new(),
@@ -119,6 +107,7 @@ impl OBBitstamp {
             }
             o.spread = o.asks[0].price - o.bids[0].price;
             self.book.write(o);
+            tx.send(0).unwrap();
         }
     }
 }

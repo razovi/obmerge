@@ -22,7 +22,7 @@ Two binaries are provided which may be run using:
 - refactor code
 - better error handling
 - add PONG messages to stop disconnections
-- make the combined orderbook update on every change of any orderbook, not on request
+- fix stop/quit commands
 
 # Remarks
 - src/triplebuffer.rs is currently unused. The triple_buffer dependency is used instead.

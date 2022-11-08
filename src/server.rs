@@ -19,9 +19,11 @@ impl OrderbookAggregator for BookServer {
         let mut rx = self.tx.subscribe();
         
         let (ctx, crx) = mpsc::channel::<Result<Summary, Status>>(1);
-        tokio::spawn(async move {
+       tokio::spawn (async move {
             loop{
-                ctx.send(Ok(rx.recv().await.unwrap())).await;
+                match ctx.send(Ok(rx.recv().await.unwrap())).await {
+                    _ => {}
+                }
             }
         });
 
