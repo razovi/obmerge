@@ -1,4 +1,5 @@
 #![allow(unused_imports)]
+use std::collections::HashSet;
 use std::io::{stdin, stdout, Write};
 use std::{thread, time};
 use std::sync::{Arc, Mutex};
@@ -13,6 +14,10 @@ use tokio::sync::mpsc::{self, Receiver, Sender};
 use tokio::sync::broadcast;
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
+
+//allowed symbols
+const ALLSYM: [&'static str; 3] = ["ethbtc", "ethusdt", "btcusdt"];
+
 
 async fn clear(handles: &mut Vec<JoinHandle<()>>, books: &mut Arc<RwLock<Vec<triple_buffer::Output<OrderBook>>>>) {
     for handle in take(handles) {
@@ -105,6 +110,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>>{
             }
         }
     }));
+    let mut hashsym = HashSet::new();
+    for x in ALLSYM {
+        hashsym.insert(x);
+    }
     loop{        
         buffer.clear();
         print!("{}>", status[ps]);
@@ -121,15 +130,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>>{
                 break;
             },
             "start" => {
-                ps = 1;
-
                 //get trading symbol
                 let pair = iter.next();
-                if pair == None {
-                    println!("Please provide a symbol");
-                    continue;
+                match pair{
+                    None => {
+                        println!("Please provide a symbol");
+                        continue;
+                    }
+                    Some(x) => {
+                        if !hashsym.contains(x) {
+                            println!("Symbol not allowed");
+                            continue;
+                        }
+                    }
                 }
 
+                ps = 1;
                 //Connect to Binance
                 print!("Connecting to Binance...");
                 let (cbin, cbout) = triple_buffer(&book_zero());
