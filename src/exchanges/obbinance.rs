@@ -2,7 +2,7 @@ use std::net::TcpStream;
 use crate::orderbook::{OrderLine, OrderBook};
 use tungstenite::{connect, WebSocket, stream::MaybeTlsStream};
 use url::Url;
-use tokio::sync::broadcast::Sender;
+use tokio::sync::mpsc::Sender;
 use serde_json;
 use serde::Deserialize;
 
@@ -47,7 +47,7 @@ impl OBBinance {
             socket,
         }
     }
-    pub fn listen(&mut self, tx: Sender<usize>) {
+    pub async fn listen(&mut self, tx: Sender<usize>) {
         let mut fallback = BinanceBook{lastUpdateId: 0, bids: Vec::new(), asks: Vec::new()};
         loop{
             let msg = self.socket.as_mut().unwrap().read_message().expect("Error reading message");
@@ -79,7 +79,7 @@ impl OBBinance {
             }
             o.spread = o.asks[0].price - o.bids[0].price;
             self.book.write(o);
-            tx.send(0).unwrap();
+            tx.send(0).await.unwrap();
         }
     }
 }

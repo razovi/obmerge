@@ -9,12 +9,14 @@ use obmerge::proto::order_book::Summary;
 use obmerge::server;
 use std::mem::take;
 use tonic::{transport::Server, Request, Response, Status, Streaming};
-use tokio::sync::broadcast::{self, channel, Receiver, Sender};
+use tokio::sync::mpsc::{self, Receiver, Sender};
+use tokio::sync::broadcast;
 use tokio::sync::RwLock;
+use tokio::task::JoinHandle;
 
-async fn clear(handles: &mut Vec<thread::JoinHandle<()>>, books: &mut Arc<RwLock<Vec<triple_buffer::Output<OrderBook>>>>) {
+async fn clear(handles: &mut Vec<JoinHandle<()>>, books: &mut Arc<RwLock<Vec<triple_buffer::Output<OrderBook>>>>) {
     for handle in take(handles) {
-        handle.join().unwrap();
+        handle.abort();
     }
     handles.clear();
     books.write().await.clear();
@@ -30,7 +32,7 @@ fn book_zero() -> OrderBook{
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>>{
-    let (obtx, _obrx) = broadcast::channel::<Summary>(9000);
+    let (obtx, _obrx) = broadcast::channel::<Summary>(1);
     let cobtx = obtx.clone();
     let mut tasks = Vec::new();
     tasks.push(tokio::spawn(async move {
@@ -44,12 +46,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>>{
     let mut books: Arc<RwLock<Vec<triple_buffer::Output<OrderBook>>>> = Arc::new(RwLock::new(Vec::new()));
     let books_clone = books.clone();
 
-    let mut handles: Vec<thread::JoinHandle<()>> = Vec::new();
-    let (tx, mut rx) = channel::<usize>(9000);
-    //update and stream new order book
+    let mut handles: Vec<JoinHandle<()>> = Vec::new();
+    let (tx, mut rx) = mpsc::channel::<usize>(1);
     tasks.push(tokio::spawn(async move {
         loop{
-            if let Ok(id) = rx.recv().await {
+            if let Some(id) = rx.recv().await {
                 if id == 0 {
                     let mut books = books_clone.write().await;
                     let n = books.len();
@@ -135,9 +136,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>>{
                 books.write().await.push(cbout);
                 let ctx = tx.clone();
                 let cpair = String::from(pair.unwrap());
-                handles.push(thread::spawn(move || {
+                handles.push(tokio::spawn(async move {
                     let mut obb: OBBinance = OBBinance::new(cbin, cpair);
-                    obb.listen(ctx);
+                    obb.listen(ctx).await;
                 }));
                 let aux: Result<(), String> = Ok(());
                 match aux {
@@ -156,9 +157,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>>{
                 books.write().await.push(cbout);
                 let ctx = tx.clone();
                 let cpair = String::from(pair.unwrap());
-                handles.push(thread::spawn(move || {
+                handles.push(tokio::spawn(async move {
                     let mut obb: OBBitstamp = OBBitstamp::new(cbin, cpair);
-                    obb.listen(ctx);
+                    obb.listen(ctx).await;
                 }));
                 let aux: Result<(), String> = Ok(());
                 match aux {
@@ -177,6 +178,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>>{
             "stop" => {
                 clear(&mut handles, &mut books).await;
                 ps = 0;
+                thread::sleep(time::Duration::new(0, 200000000));
             }
             _ => {
                 println!("Unknown Command");

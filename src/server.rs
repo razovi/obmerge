@@ -1,6 +1,6 @@
 use futures::Stream;
 use std::{pin::Pin};
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::{broadcast, broadcast::error::RecvError, mpsc};
 use tonic::{transport::Server, Response, Status};
 use crate::proto::order_book::orderbook_aggregator_server::{OrderbookAggregator, OrderbookAggregatorServer};
 use crate::proto::order_book::{Summary, Empty};
@@ -21,8 +21,24 @@ impl OrderbookAggregator for BookServer {
         let (ctx, crx) = mpsc::channel::<Result<Summary, Status>>(1);
        tokio::spawn (async move {
             loop{
-                match ctx.send(Ok(rx.recv().await.unwrap())).await {
-                    _ => {}
+                let data = rx.recv().await;
+                match data {
+                    Ok(x) => {
+                        match ctx.send(Ok(x)).await {
+                            _ => {}
+                        }
+                    }
+                    Err(error) => {
+                        match error {
+                            RecvError::Lagged(_) => {
+                                println!("Lagged");
+                            }
+                            _ => {
+                                panic!("Unexpected error");
+                            }
+                        }
+                    }
+                    
                 }
             }
         });

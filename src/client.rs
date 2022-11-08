@@ -12,12 +12,10 @@ async fn streaming_ob(client: &mut OrderbookAggregatorClient<Channel>) {
         .unwrap()
         .into_inner();
 
-    // stream is infinite - take just 5 elements and then disconnect
     loop{
         let item = stream.message().await.unwrap().unwrap();
-        println!("\treceived: {}", serde_json::to_string(&OrderBook::from_summary(item)).unwrap());
+        println!("received: {}", serde_json::to_string(&OrderBook::from_summary(item)).unwrap());
     }
-    // stream is droped here and the disconnect info is send to server
 }
 
 #[tokio::main]

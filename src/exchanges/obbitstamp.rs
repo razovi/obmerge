@@ -2,7 +2,7 @@ use std::net::TcpStream;
 use crate::orderbook::{OrderLine, OrderBook};
 use tungstenite::{connect, WebSocket, stream::MaybeTlsStream};
 use url::Url;
-use tokio::sync::broadcast::Sender;
+use tokio::sync::mpsc::Sender;
 use serde::{Serialize, Deserialize};
 use tungstenite::Message;
 use serde_json;
@@ -75,7 +75,7 @@ impl OBBitstamp {
             socket,
         }
     }
-    pub fn listen(&mut self, tx: Sender<usize>) {
+    pub async fn listen(&mut self, tx: Sender<usize>) {
         let mut fallback: BitstampBook = BitstampBook{data: BitstampData{timestamp: String::new(), microtimestamp: String::new(), bids: Vec::new(), asks: Vec::new()}, channel: String::new(), event: String::new()};
         loop{
 
@@ -107,7 +107,7 @@ impl OBBitstamp {
             }
             o.spread = o.asks[0].price - o.bids[0].price;
             self.book.write(o);
-            tx.send(0).unwrap();
+            tx.send(0).await.unwrap();
         }
     }
 }
