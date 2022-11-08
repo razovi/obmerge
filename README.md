@@ -22,7 +22,6 @@ Two binaries are provided which may be run using:
 - refactor code
 - better error handling
 - add PONG messages to stop disconnections
-- fix stop/quit commands
 
 # Remarks
 - src/triplebuffer.rs is currently unused. The triple_buffer dependency is used instead.

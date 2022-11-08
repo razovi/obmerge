@@ -32,7 +32,7 @@ fn book_zero() -> OrderBook{
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>>{
-    let (obtx, _obrx) = broadcast::channel::<Summary>(1);
+    let (obtx, _obrx) = broadcast::channel::<Summary>(10);
     let cobtx = obtx.clone();
     let mut tasks = Vec::new();
     tasks.push(tokio::spawn(async move {
