@@ -16,8 +16,7 @@ Two binaries are provided which may be run using:
 1. It appears that the bitstamp orderbook is updated less frequently than the binance orderbook, probably because it is streamed at a much higher depth. Is there anything I can do to improve this?
 
 # TODO
-- refactor code
-- better error handling
+- refactor code (maybe)
 
 # Remarks
 - src/triplebuffer.rs is currently unused. The triple_buffer dependency is used instead.

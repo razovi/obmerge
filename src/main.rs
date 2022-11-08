@@ -109,7 +109,7 @@ async fn main() {
                     }
 
                     res.spread = res.asks[0].price - res.bids[0].price;
-                    cobtx2.send(Some(res.to_summary())).unwrap();
+                    let _ = cobtx2.send(Some(res.to_summary()));
                 }
             }
         }
@@ -125,17 +125,18 @@ async fn main() {
         stdin().read_line(&mut buffer).expect("");
         let mut iter = buffer.split_whitespace();
         let word = iter.next();
-        if word == None{
-            continue;
-        }
-        match word.unwrap(){
+        match word.unwrap_or("continue"){
+            "continue" => {}
             "quit" => {
                 process::exit(0);
             },
             "start" => {
+                if ps == 1 {
+                    println!("Can't start while online");
+                    continue;
+                }
                 //get trading symbol
-                let pair = iter.next();
-                match pair{
+                let pair = match iter.next(){
                     None => {
                         println!("Please provide a symbol");
                         continue;
@@ -145,8 +146,9 @@ async fn main() {
                             println!("Symbol not allowed");
                             continue;
                         }
+                        x
                     }
-                }
+                };
 
                 ps = 1;
                 //Connect to Binance
@@ -154,7 +156,7 @@ async fn main() {
                 let (cbin, cbout) = triple_buffer(&book_zero());
                 books.write().await.push(cbout);
                 let ctx = tx.clone();
-                let cpair = String::from(pair.unwrap());
+                let cpair = String::from(pair);
                 handles.push(tokio::spawn(async move {
                     let mut obb: OBBinance = OBBinance::new(cbin, cpair);
                     obb.listen(ctx).await;
@@ -175,7 +177,7 @@ async fn main() {
                 let (cbin, cbout) = triple_buffer(&book_zero());
                 books.write().await.push(cbout);
                 let ctx = tx.clone();
-                let cpair = String::from(pair.unwrap());
+                let cpair = String::from(pair);
                 handles.push(tokio::spawn(async move {
                     let mut obb: OBBitstamp = OBBitstamp::new(cbin, cpair);
                     obb.listen(ctx).await;
