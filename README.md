@@ -12,12 +12,6 @@ Two binaries are provided which may be run using:
     - `quit` will end all processes
 2. `cargo run --bin client` will start a client which will output to the console the streamed data from the server.
 
-# Issues/Questions
-1. It appears that the bitstamp orderbook is updated less frequently than the binance orderbook, probably because it is streamed at a much higher depth. Is there anything I can do to improve this?
-
-# TODO
-- refactor code (maybe)
-
 # Remarks
 - src/triplebuffer.rs is currently unused. The triple_buffer dependency is used instead.
 - the allowed symbols are {`ethbtc`, `ethusdt`, `btcusdt`}
