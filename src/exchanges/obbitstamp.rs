@@ -9,7 +9,6 @@ use serde_json;
 
 pub struct OBBitstamp{
     book: triple_buffer::Input<OrderBook>,
-    pub status: Result<(), String>,
     socket: Option<WebSocket<MaybeTlsStream<TcpStream>>>,
 }
 
@@ -42,7 +41,7 @@ pub struct BitstampBook{
 }
 
 impl OBBitstamp {
-    pub fn new(book: triple_buffer::Input<OrderBook>, pair: String) -> Self{
+    pub fn new(book: triple_buffer::Input<OrderBook>, pair: String) -> Result<Self, &'static str>{
         let channel = Channel{channel: format!("detail_order_book_{}", pair)};
         let subscribe = Subscribe{
             event: String::from("bts:subscribe"),
@@ -50,45 +49,38 @@ impl OBBitstamp {
         };
         let url = format!("wss://ws.bitstamp.net");
         let r = connect(Url::parse(&url).unwrap());
-        let mut socket = None;
-        let ssocket;
-        let response;
-        let status = match r {
+        match r {
             Ok(x) => {
-                (ssocket, response) = x;
-                socket = Some(ssocket);
-                println!("Connected to Bitstamp stream.");
-                println!("HTTP status code: {}", response.status());
-
+                let (mut socket, _response) = x;
+                
+                // subscribe to the detail_order_book channel
                 let payload = serde_json::to_string(&subscribe).unwrap();
-                socket.as_mut().unwrap().write_message(Message::Text(payload.into())).unwrap();
-                let _ = socket.as_mut().unwrap().read_message().expect("Error reading message");
-                Ok(())
+                socket.write_message(Message::Text(payload.into())).unwrap();
+                
+                let _ = socket.read_message().expect("Error reading message");
+                Ok(OBBitstamp {
+                    book,
+                    socket: Some(socket),
+                })
             }
             Err(_) => {
-                Err(String::from("Can't connect"))
+                Err("Can't connect")
             }
-        };
-        OBBitstamp {
-            book,
-            status,
-            socket,
         }
     }
     pub async fn listen(&mut self, tx: Sender<usize>) {
         let mut fallback: BitstampBook = BitstampBook{data: BitstampData{timestamp: String::new(), microtimestamp: String::new(), bids: Vec::new(), asks: Vec::new()}, channel: String::new(), event: String::new()};
         loop{
-
-            let msg = self.socket.as_mut().unwrap().read_message().expect("Error reading message");
-            //println!("Received: {}", msg);
             let mut o: OrderBook = OrderBook{
                 spread: 0.0,
                 asks: Vec::new(),
                 bids: Vec::new(),
             };
 
+            let msg = self.socket.as_mut().unwrap().read_message().expect("Error reading message");
             let b: BitstampBook = serde_json::from_str(&msg.into_text().unwrap()[..]).unwrap_or(fallback);
             fallback = b.clone();
+            // get 10 asks
             for i in 0..10 {
                 let l = OrderLine{
                     exchange: String::from("bitstamp"),
@@ -97,6 +89,7 @@ impl OBBitstamp {
                 };
                 o.asks.push(l);
             }
+            // get 10 bids
             for i in 0..10 {
                 let l = OrderLine{
                     exchange: String::from("bitstamp"),
@@ -105,7 +98,9 @@ impl OBBitstamp {
                 };
                 o.bids.push(l);
             }
+            // get spread
             o.spread = o.asks[0].price - o.bids[0].price;
+            // update orderbook and send update message
             self.book.write(o);
             let _ = tx.send(0);
         }

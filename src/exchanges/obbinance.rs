@@ -9,7 +9,6 @@ use serde::Deserialize;
 
 pub struct OBBinance{
     book: triple_buffer::Input<OrderBook>,
-    pub status: Result<(), String>,
     socket: Option<WebSocket<MaybeTlsStream<TcpStream>>>,
 }
 
@@ -23,35 +22,28 @@ pub struct BinanceBook{
 }
 
 impl OBBinance {
-    pub fn new(book: triple_buffer::Input<OrderBook>, pair: String) -> Self{
+    pub fn new(book: triple_buffer::Input<OrderBook>, pair: String) -> Result<Self, &'static str>{
         let url = format!("wss://stream.binance.com:9443/ws/{}@depth20@100ms/ws", pair);
         let r = connect(Url::parse(&url).unwrap());
-        let mut socket = None;
-        let ssocket;
-        let response;
-        let status = match r {
+        match r {
             Ok(x) => {
-                (ssocket, response) = x;
-                socket = Some(ssocket);
-                println!("Connected to binance stream.");
-                println!("HTTP status code: {}", response.status());
-                Ok(())
+                let (socket, _response) = x;
+                Ok(OBBinance{
+                    book,
+                    socket: Some(socket),
+                })
             }
             Err(_) => {
-                Err(String::from("Can't connect"))
+                Err("Can't connect!")
             }
-        };
-        OBBinance{
-            book,
-            status,
-            socket,
         }
+       
     }
     pub async fn listen(&mut self, tx: Sender<usize>) {
         let mut fallback = BinanceBook{lastUpdateId: 0, bids: Vec::new(), asks: Vec::new()};
         let mut frame = Vec::new();
         loop{
-            let msg = self.socket.as_mut().unwrap().read_message().expect("Error reading message");
+            // send PONG frame after receiving a PING
             if !frame.is_empty() {
                 self.socket.as_mut().unwrap().write_message(Message::Pong(frame.clone())).unwrap();
                 frame.clear();
@@ -63,6 +55,7 @@ impl OBBinance {
                 bids: Vec::new(),
             };
 
+            let msg = self.socket.as_mut().unwrap().read_message().expect("Error reading message");
             match msg {
                 Message::Ping(x) => {
                     frame = x;
@@ -70,6 +63,7 @@ impl OBBinance {
                 Message::Text(x) => {
                     let b: BinanceBook = serde_json::from_str(&x[..]).unwrap_or(fallback);
                     fallback = b.clone();
+                    // get 10 asks
                     for i in 0..10 {
                         let l = OrderLine{
                             exchange: String::from("binance"),
@@ -78,6 +72,7 @@ impl OBBinance {
                         };
                         o.asks.push(l);
                     }
+                    // get 10 bids
                     for i in 0..10 {
                         let l = OrderLine{
                             exchange: String::from("binance"),
@@ -86,7 +81,9 @@ impl OBBinance {
                         };
                         o.bids.push(l);
                     }
+                    // get spread
                     o.spread = o.asks[0].price - o.bids[0].price;
+                    // update orderbook and send update message
                     self.book.write(o);
                     let _ = tx.send(0).await;
                 }
